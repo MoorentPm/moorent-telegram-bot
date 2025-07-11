@@ -9,10 +9,6 @@ from functools import wraps
 from typing import Dict, Optional
 import enum
 
-# --- Import aggiuntivi per il web server ---
-from flask import Flask
-from threading import Thread
-
 # --- Import delle librerie installate ---
 import pytz
 from dotenv import load_dotenv
@@ -33,31 +29,6 @@ from dateutil.parser import parse as parse_date
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv()
 
-# ==============================================================================
-# --- Sezione Web Server per tenere il bot attivo ---
-# ==============================================================================
-web_app = Flask('')
-
-
-@web_app.route('/')
-def home():
-    """Questa rotta serve solo per rispondere al ping del servizio di uptime."""
-    return "Il bot è attivo."
-
-
-def run_web_server():
-    """Esegue il server Flask."""
-    # L'host 0.0.0.0 è necessario per essere visibile esternamente su Replit
-    web_app.run(host='0.0.0.0', port=8080)
-
-
-def start_web_server_thread():
-    """Avvia il server web in un thread separato per non bloccare il bot."""
-    server_thread = Thread(target=run_web_server)
-    server_thread.daemon = True  # Permette al thread di chiudersi con il programma principale
-    server_thread.start()
-    logging.info("Web server per l'uptime avviato in background.")
-
 
 # ==============================================================================
 # --- Inizio di: src/config.py ---
@@ -75,7 +46,8 @@ class Config:
     OPENAI_TEMPERATURE = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
 
     # Database Configuration
-    DATABASE_URL = os.getenv('DATABASE_URL')
+    # <-- MODIFICA: Torniamo a un semplice file SQLite -->
+    DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///moorent_bot.db')
     DATABASE_ECHO = os.getenv('DATABASE_ECHO', 'False').lower() == 'true'
 
     # WhatsApp Configuration
@@ -115,7 +87,6 @@ class Config:
         if not cls.WHATSAPP_NUMBER: errors.append("WHATSAPP_NUMBER non configurato")
         if not cls.ADMIN_USER_IDS: errors.append("ADMIN_USER_IDS non configurato")
         if not cls.TARGET_GROUPS: errors.append("TARGET_GROUPS non configurato.")
-        if not cls.DATABASE_URL: errors.append("DATABASE_URL non configurato (necessario per Replit).")
 
         if errors:
             raise ValueError("Errori di configurazione:\n" + "\n".join(errors))
@@ -657,7 +628,6 @@ async def get_datetime_and_generate(update: Update, context: ContextTypes.DEFAUL
     topic = context.user_data.get('topic', 'un argomento di marketing')
     prompt = f"Crea un post per social media per Moorent Pm. L'argomento è: '{topic}'."
 
-    # <-- MODIFICA: Usa il servizio AI condiviso invece di crearne uno nuovo -->
     ai_service = context.application.bot_data.get('ai_service')
     try:
         post_data = await ai_service.generate_post(prompt)
@@ -770,7 +740,6 @@ async def get_correction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     await update.message.reply_text("Sto applicando le tue correzioni... 🤖")
 
-    # <-- MODIFICA: Usa il servizio AI condiviso invece di crearne uno nuovo -->
     ai_service = context.application.bot_data.get('ai_service')
     try:
         improved_data = await ai_service.improve_post(original_content, feedback)
@@ -880,7 +849,7 @@ class MoorentBot:
 
         self.app = Application.builder().token(Config.BOT_TOKEN).build()
         self.scheduler_service = None
-        self.ai_service = None  # <-- MODIFICA: Aggiunto per contenere il servizio AI
+        self.ai_service = None
 
     async def post_init(self, application: Application) -> None:
         """Inizializzazione post-avvio del bot."""
@@ -889,7 +858,6 @@ class MoorentBot:
         Base.metadata.create_all(bind=engine)
         self.logger.info("Database inizializzato.")
 
-        # <-- MODIFICA: I servizi vengono creati e memorizzati qui -->
         self.scheduler_service = SchedulerService()
         application.bot_data['scheduler_service'] = self.scheduler_service
         await self.scheduler_service.start()
@@ -968,8 +936,8 @@ class MoorentBot:
 
 
 if __name__ == "__main__":
-    # Avvia il server web in un thread separato per tenere vivo il Repl
-    start_web_server_thread()
+    # Il server web non è più necessario con PythonAnywhere
+    # start_web_server_thread()
 
     # Avvia il bot
     bot = MoorentBot()
