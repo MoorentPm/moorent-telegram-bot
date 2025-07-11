@@ -26,7 +26,7 @@ from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot)
 from telegram.ext import (Application, CommandHandler, CallbackQueryHandler,
                           MessageHandler, filters, ContextTypes, ConversationHandler)
-from telegram.constants import ParseMode  # <-- MODIFICA: Importato per usare ParseMode.HTML
+from telegram.constants import ParseMode
 from dateutil.parser import parse as parse_date
 
 # --- Caricamento iniziale ---
@@ -66,7 +66,7 @@ class Config:
     """Configurazione centralizzata dell'applicazione"""
     # Bot Configuration
     BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-    BOT_NAME = os.getenv('BOT_NAME', 'Moorent Pm Bot')  # <-- MODIFICA
+    BOT_NAME = os.getenv('BOT_NAME', 'Moorent Pm Bot')
 
     # OpenAI Configuration
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
@@ -80,7 +80,7 @@ class Config:
 
     # WhatsApp Configuration
     WHATSAPP_NUMBER = os.getenv('WHATSAPP_NUMBER', '+393534830386')
-    WHATSAPP_MESSAGE = os.getenv('WHATSAPP_MESSAGE', 'Ciao! Sono interessato ai servizi Moorent Pm')  # <-- MODIFICA
+    WHATSAPP_MESSAGE = os.getenv('WHATSAPP_MESSAGE', 'Ciao! Sono interessato ai servizi Moorent Pm')
 
     # Admin Configuration
     ADMIN_USER_IDS = [int(uid.strip()) for uid in os.getenv('ADMIN_USER_IDS', '').split(',') if uid.strip()]
@@ -657,7 +657,8 @@ async def get_datetime_and_generate(update: Update, context: ContextTypes.DEFAUL
     topic = context.user_data.get('topic', 'un argomento di marketing')
     prompt = f"Crea un post per social media per Moorent Pm. L'argomento è: '{topic}'."
 
-    ai_service = AIService()
+    # <-- MODIFICA: Usa il servizio AI condiviso invece di crearne uno nuovo -->
+    ai_service = context.application.bot_data.get('ai_service')
     try:
         post_data = await ai_service.generate_post(prompt)
         context.user_data['post_content'] = post_data['content']
@@ -769,7 +770,8 @@ async def get_correction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     await update.message.reply_text("Sto applicando le tue correzioni... 🤖")
 
-    ai_service = AIService()
+    # <-- MODIFICA: Usa il servizio AI condiviso invece di crearne uno nuovo -->
+    ai_service = context.application.bot_data.get('ai_service')
     try:
         improved_data = await ai_service.improve_post(original_content, feedback)
         new_content = improved_data['content']
@@ -878,6 +880,7 @@ class MoorentBot:
 
         self.app = Application.builder().token(Config.BOT_TOKEN).build()
         self.scheduler_service = None
+        self.ai_service = None  # <-- MODIFICA: Aggiunto per contenere il servizio AI
 
     async def post_init(self, application: Application) -> None:
         """Inizializzazione post-avvio del bot."""
@@ -886,9 +889,14 @@ class MoorentBot:
         Base.metadata.create_all(bind=engine)
         self.logger.info("Database inizializzato.")
 
+        # <-- MODIFICA: I servizi vengono creati e memorizzati qui -->
         self.scheduler_service = SchedulerService()
         application.bot_data['scheduler_service'] = self.scheduler_service
         await self.scheduler_service.start()
+
+        self.ai_service = AIService()
+        application.bot_data['ai_service'] = self.ai_service
+        self.logger.info("Servizio AI inizializzato.")
 
         for admin_id in Config.ADMIN_USER_IDS:
             try:
