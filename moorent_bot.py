@@ -1,7 +1,7 @@
 import os
 import sys
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 from contextlib import contextmanager
@@ -19,13 +19,14 @@ from dotenv import load_dotenv
 import openai
 from openai import AsyncOpenAI
 from sqlalchemy import (create_engine, Column, Integer, String, Text, DateTime,
-                        Enum as SQLAlchemyEnum, func)
+                        Enum as SQLAlchemyEnum, func, BigInteger)
 from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot)
 from telegram.ext import (Application, CommandHandler, CallbackQueryHandler,
                           MessageHandler, filters, ContextTypes, ConversationHandler)
+from telegram.constants import ParseMode  # <-- MODIFICA: Importato per usare ParseMode.HTML
 from dateutil.parser import parse as parse_date
 
 # --- Caricamento iniziale ---
@@ -65,23 +66,21 @@ class Config:
     """Configurazione centralizzata dell'applicazione"""
     # Bot Configuration
     BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-    BOT_NAME = os.getenv('BOT_NAME', 'MoorentPM Bot')
+    BOT_NAME = os.getenv('BOT_NAME', 'Moorent Pm Bot')  # <-- MODIFICA
 
     # OpenAI Configuration
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
     OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
-    OPENAI_MAX_TOKENS = int(os.getenv('OPENAI_MAX_TOKENS', '1000'))
+    OPENAI_MAX_TOKENS = int(os.getenv('OPENAI_MAX_TOKENS', '1500'))
     OPENAI_TEMPERATURE = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
 
     # Database Configuration
-    # Replit usa un file system effimero, quindi usiamo il DB di Replit o un servizio esterno.
-    # Per semplicità, Replit offre un DB gratuito che si collega con una URL segreta.
-    DATABASE_URL = os.getenv('DATABASE_URL')  # Questa verrà fornita da Replit
+    DATABASE_URL = os.getenv('DATABASE_URL')
     DATABASE_ECHO = os.getenv('DATABASE_ECHO', 'False').lower() == 'true'
 
     # WhatsApp Configuration
     WHATSAPP_NUMBER = os.getenv('WHATSAPP_NUMBER', '+393534830386')
-    WHATSAPP_MESSAGE = os.getenv('WHATSAPP_MESSAGE', 'Ciao! Sono interessato ai servizi MoorentPM')
+    WHATSAPP_MESSAGE = os.getenv('WHATSAPP_MESSAGE', 'Ciao! Sono interessato ai servizi Moorent Pm')  # <-- MODIFICA
 
     # Admin Configuration
     ADMIN_USER_IDS = [int(uid.strip()) for uid in os.getenv('ADMIN_USER_IDS', '').split(',') if uid.strip()]
@@ -192,9 +191,9 @@ class Post(Base):
     model_version = Column(String(100))
     scheduled_at = Column(DateTime(timezone=True))
     published_at = Column(DateTime(timezone=True))
-    telegram_message_id = Column(Integer)
+    telegram_message_id = Column(BigInteger)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    created_by = Column(Integer)
+    created_by = Column(BigInteger)
 
     def __repr__(self):
         return f"<Post {self.id}: {self.status.value}>"
@@ -262,11 +261,167 @@ class AIService:
 
     @staticmethod
     def _get_system_prompt() -> str:
-        # Aggiunta istruzione per usare sempre il Linktree corretto
-        return f"""Sei un esperto copywriter per MoorentPM, un'azienda leader nella gestione di affitti brevi nel Triveneto. Il tuo stile è professionale ma accogliente, enfatizzando sempre i vantaggi concreti per i proprietari di immobili.
-I post devono essere tra 150 e 300 parole.
-Mantieni un tono che ispiri fiducia e professionalità.
-Alla fine di ogni post, includi SEMPRE una call-to-action che invita a visitare il nostro Linktree: {Config.LINKTREE_URL}"""
+        return f"""
+Sei l'assistente AI specializzato di Moorent Pm, una società di property management boutique specializzata nella gestione premium di affitti brevi.
+
+## IDENTITÀ AZIENDALE
+
+**Chi siamo**: Moorent Pm è un GRUPPO di property management specializzato in affitti brevi che valorizza il potenziale di ogni immobile attraverso un modello di gestione premium. La nostra area di competenza principale è il Triveneto (Veneto, Trentino-Alto Adige, Friuli-Venezia Giulia), ma valutiamo anche proprietà con potenziale in altre zone d'Italia.
+
+**Valori Fondamentali**:
+- Eccellenza Trasformativa (trasformare potenziale in risultati concreti)
+- Sicurezza Proattiva (anticipare e prevenire problematiche)
+- Trasparenza Costruttiva (condivisione informazioni e ragionamenti)
+- Innovazione Responsabile (tecnologie che portano benefici concreti)
+- Valorizzazione Progressiva (crescita valore patrimoniale nel tempo)
+
+## TARGET AUDIENCE
+
+**Proprietari Ideali**:
+- Professionisti 30-65 anni, reddito >€60.000 annui
+- HNWI (High Net Worth Individuals) orientati alla qualità
+- Poco tempo disponibile, cercano partner affidabili
+- Interessati a ottimizzazione fiscale dell'investimento
+- Proprietà nel Triveneto con potenziale di valorizzazione
+
+**Profili Principali**:
+1. **Investitore Pragmatico** (Andrea): Professionista/imprenditore, vuole massimizzare rendimento senza coinvolgimento
+2. **Proprietaria Affezionata** (Gabriella): Legame emotivo con immobile, priorità cura e rispetto
+3. **Cercatore Rendita Sicura** (Laura): Preferisce stabilità e garanzie, avversione al rischio
+
+## SERVIZI E DIFFERENZIATORI
+
+**Servizio Sostituto d'Imposta** (DIFFERENZIATORE UNICO):
+- Gestione fiscale completa con ritenuta d'acconto cedolare secca 21%
+- Zero oneri amministrativi per proprietario
+- Certificazione Unica annuale
+- Ottimizzazione deduzioni e costi
+- Eliminazione rischi sanzioni
+
+**Modelli di Gestione**:
+1. **Gestione Premium**: Commissione % + pacchetto attivazione €480
+2. **Gestione Online**: Solo gestione digitale per proprietari con team locale
+3. **Subaffitto Strategico**: Canone fisso garantito + 3 mensilità anticipate
+
+**Pacchetto Attivazione** (€480):
+- Consulenza fiscale personalizzata
+- Assicurazione annuale completa
+- Progetto home staging
+- Servizio fotografico professionale (valore €150)
+- Setup self check-in (valore €100)
+- Welcome book e kit completo
+
+## TERRITORIO E MERCATO
+
+**Area Operativa Principale**: Triveneto con valutazione di proprietà con potenziale in tutta Italia
+- Venezia: Turismo internazionale, centro storico premium
+- Verona: Business travel, fiere, cultura
+- Padova: Hub universitario e ricerca
+- Treviso: Distretto industriale, business travel
+- Belluno/Dolomiti: Turismo montano, sci e wellness
+- Trieste: Business travel, turismo culturale
+- Pordenone/Udine: Mercati emergenti
+- **Altre zone Italia**: Valutazione caso per caso per proprietà con alto potenziale
+
+**Competitor Principali**:
+- Check-in Check-out Facile (network regionale)
+- I-Home (servizi integrati)
+- Affitto Facile FVG (specializzazione geografica)
+- Agenzie immobiliari tradizionali
+- Property management commerciale
+
+## TONE OF VOICE E STILE
+
+**Caratteristiche Comunicazione**:
+- Professionale ma accessibile
+- Educativo-first (valore prima della vendita)
+- Data-driven con esempi concreti
+- Trasparente e costruttivo
+- Boutique premium (non mass-market)
+
+**Formattazione Post**:
+- Usa tag HTML per la formattazione. Usa `<b>testo</b>` per il grassetto.
+- Emoji pertinenti ma non eccessivi
+- Struttura scannable con bullet points
+- Numeri e percentuali evidenziati
+- Call-to-action soft ma presenti
+- Hashtag pertinenti (#MoorentPm #PropertyManagement #AffittiBrevi #Triveneto)
+
+## CONTENT FRAMEWORK
+
+**Tipologie Contenuto**:
+1. **Educativo** (40%): Guide, insights, how-to
+2. **Market Intelligence** (30%): Trend, analisi, benchmark
+3. **Case Study** (20%): Risultati anonimi, trasformazioni
+4. **Behind-the-scenes** (10%): Processi, filosofia aziendale
+
+**Elementi Obbligatori**:
+- Link tree: {Config.LINKTREE_URL} (sempre presente)
+- Valore educativo primario
+- Soft-selling (non vendita aggressiva)
+- Esempi concreti con numeri reali
+- Call-to-action specifiche al contenuto
+
+## MESSAGGI CHIAVE
+
+**Differenziatori da Enfatizzare**:
+- Unici con servizio sostituto d'imposta nel Triveneto
+- Dimensione boutique = attenzione personalizzata
+- Specializzazione geografica = expertise locale
+- Approccio scientifico = risultati misurabili
+- Valorizzazione patrimoniale = non solo revenue
+
+**Pain Points da Risolvere**:
+- Complessità fiscale affitti brevi
+- Nuove normative 2025 (CIN, check-in presenza)
+- Stress gestionale per proprietari
+- Sottoperformance gestione fai-da-te
+- Rischi conformità normativa
+
+## RISULTATI E PERFORMANCE
+
+**Benchmark da Condividere**:
+- Proprietà gestite: +35% occupancy vs mercato
+- ADR medio: €168/notte (+12% vs mercato)
+- Review rating: 4.87/5 vs 4.3 media settore
+- Tempo risposta: 23 minuti vs 4.2h media
+- ROI pacchetto attivazione: Break-even 3-4 mesi
+
+**Case Study Anonimi**:
+- Villa Lago di Garda: 45% → 78% occupancy (+46% ricavi)
+- Appartamento Verona: ADR +50%, ricavi +106%
+- Portfolio diversificato: €87.000 ricavi annui vs €25.200 affitto tradizionale
+
+## COMPLIANCE E LINEE GUIDA
+
+**Obblighi Legali**:
+- Mai promettere risultati specifici
+- Sempre specificare "anonimi" per case study
+- Includere disclaimer su performance passate
+- Rispettare privacy clienti
+
+**Stile Comunicazione**:
+- Evitare claim esagerati o irrealistici
+- Basarsi sempre su dati verificabili
+- Mantenere professionalità anche in contenuti casual
+- Bilanciare confidence con umiltà
+
+## OBIETTIVI CONTENT
+
+**Primari**:
+- Posizionare Moorent Pm come leader thought settore
+- Educare mercato su vantaggi gestione professionale
+- Differenziare da competitor mass-market
+- Generare lead qualificati (non quantità)
+
+**Secondari**:
+- Costruire community proprietari HNWI
+- Aumentare awareness servizio sostituto d'imposta
+- Supportare processo vendita con contenuti di valore
+- Mantenere top-of-mind per decisioni future
+
+Crea sempre contenuti che riflettano questi valori, obiettivi e caratteristiche aziendali, mantenendo il focus su educazione, qualità e risultati misurabili.
+"""
 
     async def generate_post(self, prompt: str) -> Dict:
         """Genera un post utilizzando il modello fine-tuned."""
@@ -291,7 +446,7 @@ Alla fine di ogni post, includi SEMPRE una call-to-action che invita a visitare 
 
     async def improve_post(self, original_content: str, feedback: str) -> Dict:
         """Migliora un post esistente basandosi sul feedback."""
-        prompt = f"""Migliora questo post basandoti sul feedback fornito. Mantieni il messaggio di base ma ottimizza il testo per risolvere i problemi indicati.
+        prompt = f"""Analizza il seguente post e il feedback fornito. Modifica il post originale per integrare il feedback.
 
 POST ORIGINALE:
 ---
@@ -303,7 +458,9 @@ FEEDBACK PER LA CORREZIONE:
 {feedback}
 ---
 
-Genera la nuova versione migliorata del post."""
+ISTRUZIONI IMPORTANTI:
+La tua risposta deve contenere **SOLO ED ESCLUSIVAMENTE** il testo del post migliorato. Non aggiungere titoli (come "POST MIGLIORATO:"), separatori (come "---"), note o qualsiasi altra spiegazione. La tua risposta deve essere il testo puro e pronto per essere pubblicato.
+"""
         return await self.generate_post(prompt)
 
 
@@ -336,7 +493,7 @@ async def publish_post_job(post_id: int):
                 msg = await bot.send_message(
                     chat_id=group_id,
                     text=post_content,
-                    parse_mode='Markdown',
+                    parse_mode=ParseMode.HTML,
                     reply_markup=reply_markup
                 )
                 if not first_message_id:
@@ -417,24 +574,24 @@ async def start_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     welcome_message = (
         f"👋 Ciao {user.first_name}!\n\n"
-        f"Benvenuto in *{Config.BOT_NAME}*!\n\n"
+        f"Benvenuto in <b>{Config.BOT_NAME}</b>!\n\n"
         "Sono il tuo assistente per la creazione di contenuti. Usa /newpost per iniziare."
     )
     if update.message:
-        await update.message.reply_text(welcome_message, parse_mode='Markdown')
+        await update.message.reply_text(welcome_message, parse_mode=ParseMode.HTML)
 
 
 async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    help_text = "📋 *Comandi disponibili:*\n\n/start - Messaggio di benvenuto\n/help - Mostra questo messaggio"
+    help_text = "📋 <b>Comandi disponibili:</b>\n\n/start - Messaggio di benvenuto\n/help - Mostra questo messaggio"
     if update.effective_user and update.effective_user.id in Config.ADMIN_USER_IDS:
         help_text += (
-            "\n\n*Comandi Admin:*\n"
+            "\n\n<b>Comandi Admin:</b>\n"
             "/newpost - Crea e schedula un nuovo post\n"
             "/scheduled - Vedi e annulla i post schedulati\n"
             "/cancel - Annulla la creazione di un post"
         )
     if update.message:
-        await update.message.reply_text(help_text, parse_mode='Markdown')
+        await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
 
 
 # --- Fine di: handlers/user.py ---
@@ -463,8 +620,9 @@ async def get_topic(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message:
         context.user_data['topic'] = update.message.text
         await update.message.reply_text(
-            "Ottimo. Ora dimmi **quando** vuoi pubblicarlo.\n"
-            "Puoi usare un formato naturale (es. `domani alle 15:00`) o specifico (`25/12/2025 10:30`)."
+            "Ottimo. Ora dimmi <b>quando</b> vuoi pubblicarlo.\n"
+            "Puoi usare un formato naturale (es. `domani alle 15:00`) o specifico (`25/12/2025 10:30`).",
+            parse_mode=ParseMode.HTML
         )
     return GET_DATETIME
 
@@ -479,8 +637,14 @@ async def get_datetime_and_generate(update: Update, context: ContextTypes.DEFAUL
         publish_dt = parse_date(datetime_str, dayfirst=True)
         publish_dt = Config.TIMEZONE.localize(publish_dt)
 
-        if publish_dt < datetime.now(Config.TIMEZONE):
-            await update.message.reply_text("⚠️ La data inserita è nel passato. Per favore, inserisci una data futura.")
+        min_schedule_time = datetime.now(Config.TIMEZONE) + timedelta(minutes=1)
+
+        if publish_dt < min_schedule_time:
+            await update.message.reply_text(
+                "⚠️ La data inserita è nel passato o troppo vicina.\n"
+                "Per favore, inserisci una data e ora che siano <b>almeno tra un paio di minuti</b>.",
+                parse_mode=ParseMode.HTML
+            )
             return GET_DATETIME
 
         context.user_data['publish_dt'] = publish_dt
@@ -491,7 +655,7 @@ async def get_datetime_and_generate(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text("Perfetto. Sto generando il post con l'AI... 🤖")
 
     topic = context.user_data.get('topic', 'un argomento di marketing')
-    prompt = f"Crea un post per social media per MoorentPM. L'argomento è: '{topic}'."
+    prompt = f"Crea un post per social media per Moorent Pm. L'argomento è: '{topic}'."
 
     ai_service = AIService()
     try:
@@ -528,8 +692,8 @@ async def show_preview_and_actions(update: Update, context: ContextTypes.DEFAULT
     publish_dt_str = publish_dt.strftime('%d/%m/%Y alle %H:%M') if publish_dt else 'N/D'
 
     text = (
-        f"✨ *ANTEPRIMA POST*\n"
-        f"*(Schedulato per: {publish_dt_str})*\n\n"
+        f"✨ <b>ANTEPRIMA POST</b>\n"
+        f"<i>(Schedulato per: {publish_dt_str})</i>\n\n"
         f"---\n\n"
         f"{post_content}\n\n"
         f"---\n\n"
@@ -544,9 +708,9 @@ async def show_preview_and_actions(update: Update, context: ContextTypes.DEFAULT
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     if update.callback_query:
-        await update.callback_query.edit_message_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        await update.callback_query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
     elif update.message:
-        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=reply_markup)
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
 
 
 async def await_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -659,20 +823,20 @@ async def list_scheduled_posts(update: Update, _: ContextTypes.DEFAULT_TYPE) -> 
                 await message_sender.reply_text(text)
             return
 
-        message = "🗓️ *Post Schedulati:*\n\n"
+        message = "🗓️ <b>Prossimi Post in Programma:</b>\n<i>(Vengono mostrati solo i post non ancora pubblicati)</i>\n\n"
         keyboard = []
         for post in scheduled_posts:
             schedule_time = post.scheduled_at.strftime('%d/%m/%Y %H:%M')
-            message += f"▪️ *ID:* {post.id} | *Per il:* {schedule_time}\n`{post.content[:70]}...`\n\n"
+            message += f"▪️ <b>ID:</b> {post.id} | <b>Per il:</b> {schedule_time}\n<code>{post.content[:70]}...</code>\n\n"
             keyboard.append(
                 [InlineKeyboardButton(f"🗑 Annulla Post ID {post.id}", callback_data=f"cancel_post_{post.id}")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     if update.callback_query:
-        await update.callback_query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+        await update.callback_query.edit_message_text(message, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
     else:
-        await message_sender.reply_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+        await message_sender.reply_text(message, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
 
 
 async def cancel_scheduled_post_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
