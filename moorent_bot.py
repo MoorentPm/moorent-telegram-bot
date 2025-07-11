@@ -9,6 +9,10 @@ from functools import wraps
 from typing import Dict, Optional
 import enum
 
+# --- Import aggiuntivi per il web server ---
+from flask import Flask
+from threading import Thread
+
 # --- Import delle librerie installate ---
 import pytz
 from dotenv import load_dotenv
@@ -22,14 +26,36 @@ from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from telegram import (Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot)
 from telegram.ext import (Application, CommandHandler, CallbackQueryHandler,
                           MessageHandler, filters, ContextTypes, ConversationHandler)
-# Aggiunto per il parsing delle date
 from dateutil.parser import parse as parse_date
 
 # --- Caricamento iniziale ---
-# Aggiunge la directory corrente al path per import futuri
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-# Carica le variabili d'ambiente dal file .env
 load_dotenv()
+
+# ==============================================================================
+# --- Sezione Web Server per tenere il bot attivo ---
+# ==============================================================================
+web_app = Flask('')
+
+
+@web_app.route('/')
+def home():
+    """Questa rotta serve solo per rispondere al ping del servizio di uptime."""
+    return "Il bot è attivo."
+
+
+def run_web_server():
+    """Esegue il server Flask."""
+    # L'host 0.0.0.0 è necessario per essere visibile esternamente su Replit
+    web_app.run(host='0.0.0.0', port=8080)
+
+
+def start_web_server_thread():
+    """Avvia il server web in un thread separato per non bloccare il bot."""
+    server_thread = Thread(target=run_web_server)
+    server_thread.daemon = True  # Permette al thread di chiudersi con il programma principale
+    server_thread.start()
+    logging.info("Web server per l'uptime avviato in background.")
 
 
 # ==============================================================================
@@ -48,7 +74,9 @@ class Config:
     OPENAI_TEMPERATURE = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
 
     # Database Configuration
-    DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///data/moorent_bot.db')
+    # Replit usa un file system effimero, quindi usiamo il DB di Replit o un servizio esterno.
+    # Per semplicità, Replit offre un DB gratuito che si collega con una URL segreta.
+    DATABASE_URL = os.getenv('DATABASE_URL')  # Questa verrà fornita da Replit
     DATABASE_ECHO = os.getenv('DATABASE_ECHO', 'False').lower() == 'true'
 
     # WhatsApp Configuration
@@ -88,6 +116,7 @@ class Config:
         if not cls.WHATSAPP_NUMBER: errors.append("WHATSAPP_NUMBER non configurato")
         if not cls.ADMIN_USER_IDS: errors.append("ADMIN_USER_IDS non configurato")
         if not cls.TARGET_GROUPS: errors.append("TARGET_GROUPS non configurato.")
+        if not cls.DATABASE_URL: errors.append("DATABASE_URL non configurato (necessario per Replit).")
 
         if errors:
             raise ValueError("Errori di configurazione:\n" + "\n".join(errors))
@@ -767,5 +796,9 @@ class MoorentBot:
 
 
 if __name__ == "__main__":
+    # Avvia il server web in un thread separato per tenere vivo il Repl
+    start_web_server_thread()
+
+    # Avvia il bot
     bot = MoorentBot()
     bot.run()
