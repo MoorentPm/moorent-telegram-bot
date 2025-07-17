@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import re  # --- MODIFICA N. 3: Aggiunto import per le espressioni regolari
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
@@ -46,7 +47,6 @@ class Config:
     OPENAI_TEMPERATURE = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
 
     # Database Configuration
-    # <-- MODIFICA: Torniamo a un semplice file SQLite -->
     DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///moorent_bot.db')
     DATABASE_ECHO = os.getenv('DATABASE_ECHO', 'False').lower() == 'true'
 
@@ -391,7 +391,8 @@ Sei l'assistente AI specializzato di Moorent Pm, una società di property manage
 - Supportare processo vendita con contenuti di valore
 - Mantenere top-of-mind per decisioni future
 
-Crea sempre contenuti che riflettano questi valori, obiettivi e caratteristiche aziendali, mantenendo il focus su educazione, qualità e risultati misurabili.
+## Regola Fondamentale
+Quando generi un contenuto, attieniti **scrupolosamente e unicamente** alle informazioni fornite in questo prompt. Non introdurre servizi, dati, valori o concetti non presenti qui. La tua fedeltà a queste informazioni è il criterio più importante per il successo. Se ti viene chiesto di parlare di un servizio, parla solo dei servizi elencati nella sezione "SERVIZI E DIFFERENZIATORI".
 """
 
     async def generate_post(self, prompt: str) -> Dict:
@@ -567,6 +568,14 @@ async def help_command(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
 
 # --- Fine di: handlers/user.py ---
 
+# --- MODIFICA N. 3: Funzione di utility per la pulizia del formato ---
+# Questa funzione converte il Markdown (es. **testo**) in HTML (<b>testo</b>)
+# per garantire che la formattazione sia sempre corretta in Telegram.
+def markdown_to_html(text: str) -> str:
+    """Converte i principali formati Markdown in tag HTML per Telegram."""
+    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
+    return text
+
 
 # ==============================================================================
 # --- Inizio di: handlers/admin.py ---
@@ -626,17 +635,24 @@ async def get_datetime_and_generate(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text("Perfetto. Sto generando il post con l'AI... 🤖")
 
     topic = context.user_data.get('topic', 'un argomento di marketing')
-    prompt = f"Crea un post per social media per Moorent Pm. L'argomento è: '{topic}'."
+
+    prompt = f"""Basandoti **esclusivamente e fedelmente** sulle informazioni aziendali fornite nel system prompt, crea un post per i social media per Moorent Pm.
+L'argomento è: '{topic}'.
+**Non inventare servizi, valori o dati che non sono esplicitamente menzionati nelle informazioni aziendali.**"""
 
     ai_service = context.application.bot_data.get('ai_service')
     try:
         post_data = await ai_service.generate_post(prompt)
-        context.user_data['post_content'] = post_data['content']
+
+        # --- MODIFICA N. 3: Applica la pulizia del formato ---
+        clean_content = markdown_to_html(post_data['content'])
+
+        context.user_data['post_content'] = clean_content
         context.user_data['prompt'] = post_data['prompt']
 
         with get_db() as db:
             new_post = Post(
-                content=post_data['content'],
+                content=clean_content,  # Salva il contenuto già pulito
                 prompt_used=post_data['prompt'],
                 post_type='custom',
                 model_version=ai_service.model,
@@ -743,7 +759,9 @@ async def get_correction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     ai_service = context.application.bot_data.get('ai_service')
     try:
         improved_data = await ai_service.improve_post(original_content, feedback)
-        new_content = improved_data['content']
+
+        # --- MODIFICA N. 3: Applica la pulizia del formato anche qui ---
+        new_content = markdown_to_html(improved_data['content'])
 
         context.user_data['post_content'] = new_content
         context.user_data['prompt'] = improved_data['prompt']
@@ -751,7 +769,7 @@ async def get_correction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         with get_db() as db:
             db.query(Post).filter(Post.id == post_id).update({
-                'content': new_content,
+                'content': new_content,  # Salva il contenuto già pulito
                 'prompt_used': improved_data['prompt']
             })
 
@@ -936,9 +954,5 @@ class MoorentBot:
 
 
 if __name__ == "__main__":
-    # Il server web non è più necessario con PythonAnywhere
-    # start_web_server_thread()
-
-    # Avvia il bot
     bot = MoorentBot()
     bot.run()
