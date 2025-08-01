@@ -1,14 +1,19 @@
-# File di configurazione e segreti
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Database file
+moorent_bot.db
+
+# Environment variables
 .env
 
-# Directory di dati, log e ambiente virtuale
-/data/
-/logs/
-/venv/
-
-# Cache di Python
-__pycache__/
-*.pyc
-
-# File specifici dell'IDE (PyCharm)
-.idea/
+# Log files
+logs/
+*.log
